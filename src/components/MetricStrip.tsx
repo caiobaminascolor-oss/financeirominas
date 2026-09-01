@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type Metric = { label: string; value: string; hint?: string; tone?: "danger" | "success" | "warning" };
+export type Metric = { label: string; value: string; hint?: string | undefined; tone?: "danger" | "success" | "warning" | undefined };
 
 export function MetricStrip({ metrics, className }: { metrics: Metric[]; className?: string }) {
   return (
