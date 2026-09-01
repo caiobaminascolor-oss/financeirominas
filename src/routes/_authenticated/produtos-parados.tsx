@@ -86,7 +86,6 @@ function ProdutosParadosPage() {
               rows={parados}
               getKey={(r) => r.productId}
               columns={[
-                { key: "pos", header: "#", cell: (_r) => "" , className: "hidden" },
                 { key: "sku", header: "Código", cell: (r) => r.sku ?? "—" },
                 {
                   key: "name",
@@ -120,7 +119,7 @@ function ProdutosParadosPage() {
                     return <ClassBadge tone={tone} label={label} />;
                   },
                 },
-              ].filter((c) => c.key !== "pos")}
+              ]}
             />
           )}
         </>
