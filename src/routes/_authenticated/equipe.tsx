@@ -5,7 +5,7 @@ import { InsufficientData, TableSkeleton } from "@/components/InsufficientData";
 import { MetricStrip } from "@/components/MetricStrip";
 import { DataTable } from "@/components/DataTable";
 import { ClassBadge } from "@/components/ClassBadge";
-import { buildRanking, useSales } from "@/lib/analytics";
+import { useSales, type SaleRow } from "@/lib/analytics";
 import { useCommissions, useQuotes, useSalespeople, useTargets } from "@/lib/data";
 import { brl, num, pct } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
@@ -35,7 +35,7 @@ function EquipePage() {
   const loading = sales.isLoading || people.isLoading || quotes.isLoading || targets.isLoading || commissions.isLoading;
 
   const rows = useMemo(() => {
-    const ranking = buildRanking((sales.data ?? []).filter((s) => s.status !== "cancelada"));
+    const ranking = buildTeamRanking((sales.data ?? []).filter((s) => s.status !== "cancelada"));
     const byName = new Map(ranking.map((r) => [r.name, r]));
 
     return (people.data ?? []).map((p) => {
@@ -130,6 +130,66 @@ function EquipePage() {
       />
     </Shell>
   );
+}
+
+type TeamRank = {
+  name: string;
+  revenue: number;
+  count: number;
+  ticket: number;
+  profit: number;
+  marginPct: number | null;
+  discountPct: number | null;
+  score: number;
+  position: number;
+};
+
+function buildTeamRanking(sales: SaleRow[]): TeamRank[] {
+  const map = new Map<string, { revenue: number; count: number; profit: number; discount: number }>();
+  for (const sale of sales) {
+    const name = sale.salespeople?.name ?? "Sem vendedor";
+    const current = map.get(name) ?? { revenue: 0, count: 0, profit: 0, discount: 0 };
+    current.revenue += sale.total;
+    current.count += 1;
+    current.profit += sale.gross_profit;
+    current.discount += sale.discount_amount;
+    map.set(name, current);
+  }
+
+  const base = [...map.entries()].map(([name, value]) => ({
+    name,
+    revenue: value.revenue,
+    count: value.count,
+    ticket: value.count > 0 ? value.revenue / value.count : 0,
+    profit: value.profit,
+    marginPct: value.revenue > 0 ? (value.profit / value.revenue) * 100 : null,
+    discountPct:
+      value.revenue + value.discount > 0
+        ? (value.discount / (value.revenue + value.discount)) * 100
+        : null,
+  }));
+
+  const normalize = (values: number[], value: number, invert = false) => {
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    if (max === min) return 50;
+    const score = ((value - min) / (max - min)) * 100;
+    return invert ? 100 - score : score;
+  };
+
+  return base
+    .map((row) => ({
+      ...row,
+      score:
+        normalize(base.map((x) => x.revenue), row.revenue) * 0.2 +
+        normalize(base.map((x) => x.count), row.count) * 0.15 +
+        normalize(base.map((x) => x.ticket), row.ticket) * 0.15 +
+        normalize(base.map((x) => x.marginPct ?? 0), row.marginPct ?? 0) * 0.2 +
+        normalize(base.map((x) => x.profit), row.profit) * 0.2 +
+        normalize(base.map((x) => x.discountPct ?? 0), row.discountPct ?? 0, true) * 0.1,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((row, index) => ({ ...row, position: index + 1 }));
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
