@@ -8,3 +8,4 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+- Agent AI must receive business numbers only from authenticated, RLS-scoped structured tools; mutations require a separate confirmed action because model output is untrusted.
