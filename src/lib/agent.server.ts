@@ -8,7 +8,7 @@ export type AgentConversation = { id: string; title: string | null; last_message
 export type AgentAction = { id: string; action_type: string; status: string; payload: Json; result: Json | null; created_at: string };
 export type AgentTurn = { conversationId: string; message: AgentMessage; action?: AgentAction };
 
-type ToolResult = { tool: string; sufficient: boolean; inconsistent?: boolean; accessDenied?: boolean; period?: string; data: Json; missing?: string[] };
+type ToolResult = { tool: string; sufficient: boolean; inconsistent?: boolean | undefined; accessDenied?: boolean | undefined; period?: string | undefined; data: Json; missing?: string[] | undefined };
 type UserContext = { userId: string; storeId: string | null; roles: Role[]; canSeeFinance: boolean };
 
 const FINANCE_ROLES: Role[] = ["ADMIN", "GERENTE", "FINANCEIRO"];
@@ -33,7 +33,7 @@ REGRAS INVIOLÁVEIS:
 function isoDaysAgo(days: number) {
   return new Date(Date.now() - days * DAY).toISOString();
 }
-function total(rows: Array<Record<string, unknown>>, key: string) {
+function total(rows: any[], key: string) {
   return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
 }
 function safeTitle(text: string) {
@@ -44,7 +44,7 @@ async function getContext(client: Client, userId: string): Promise<UserContext> 
     client.from("profiles").select("store_id").eq("id", userId).maybeSingle(),
     client.from("user_roles").select("role").eq("user_id", userId),
   ]);
-  const roles = (roleRows ?? []).map((row) => row.role);
+  const roles = (roleRows ?? []).map((row: { role: Role }) => row.role);
   return { userId, storeId: profile?.store_id ?? null, roles, canSeeFinance: roles.some((role) => FINANCE_ROLES.includes(role)) };
 }
 function scoped(query: any, storeId: string | null) {
@@ -58,7 +58,7 @@ async function getSales(client: Client, ctx: UserContext, days = 30): Promise<To
   const since = isoDaysAgo(days);
   const { data, error } = await scoped(client.from("sales").select("id,sale_number,sold_at,total,cost_total,gross_profit,margin_pct,discount_amount,status,payment_method,customer_id,salesperson_id").gte("sold_at", since).order("sold_at", { ascending: false }).limit(500), ctx.storeId);
   if (error) throw error;
-  const rows = (data ?? []).filter((row) => row.status.toLowerCase() !== "cancelada");
+  const rows = (data ?? []).filter((row: any) => row.status.toLowerCase() !== "cancelada");
   const revenue = total(rows, "total");
   const profit = total(rows, "gross_profit");
   return { tool: "get_sales", sufficient: rows.length > 0, period: `${days} dias`, missing: rows.length ? undefined : ["Vendas no período"], data: { count: rows.length, revenue, cost: total(rows, "cost_total"), grossProfit: profit, marginPct: revenue > 0 ? profit / revenue * 100 : null, averageTicket: rows.length ? revenue / rows.length : null, discount: total(rows, "discount_amount"), rows: rows.slice(0, 50) } };
@@ -83,7 +83,7 @@ async function getInventory(client: Client, ctx: UserContext): Promise<ToolResul
   const { data, error } = await scoped(client.from("inventory").select("id,product_id,quantity,reserved_quantity,avg_cost,location,last_movement_at,products(name,sku,brand,min_stock,max_stock,sale_price)").limit(500), ctx.storeId);
   if (error) throw error;
   const rows = data ?? [];
-  return { tool: "get_inventory", sufficient: rows.length > 0, missing: rows.length ? undefined : ["Posição de estoque"], inconsistent: rows.some((row) => Number(row.quantity) < 0), data: { count: rows.length, totalCapital: rows.reduce((s, row) => s + Number(row.quantity) * Number(row.avg_cost), 0), negativeCount: rows.filter((row) => Number(row.quantity) < 0).length, rows: rows.slice(0, 100) } };
+  return { tool: "get_inventory", sufficient: rows.length > 0, missing: rows.length ? undefined : ["Posição de estoque"], inconsistent: rows.some((row: any) => Number(row.quantity) < 0), data: { count: rows.length, totalCapital: rows.reduce((s: number, row: any) => s + Number(row.quantity) * Number(row.avg_cost), 0), negativeCount: rows.filter((row: any) => Number(row.quantity) < 0).length, rows: rows.slice(0, 100) } };
 }
 async function getInventoryMovements(client: Client, ctx: UserContext, days = 90): Promise<ToolResult> {
   const { data, error } = await scoped(client.from("inventory_movements").select("id,product_id,movement_type,quantity,unit_cost,occurred_at,notes,products(name,sku)").gte("occurred_at", isoDaysAgo(days)).order("occurred_at", { ascending: false }).limit(300), ctx.storeId);
@@ -97,10 +97,10 @@ async function getStockTurnover(client: Client, ctx: UserContext): Promise<ToolR
   ]);
   if (inventory.error) throw inventory.error;
   if (items.error) throw items.error;
-  const sales = (items.data ?? []).filter((item) => !ctx.storeId || item.sales?.store_id === ctx.storeId).filter((item) => item.sales?.status.toLowerCase() !== "cancelada");
+  const sales = (items.data ?? []).filter((item: any) => !ctx.storeId || item.sales?.store_id === ctx.storeId).filter((item: any) => item.sales?.status.toLowerCase() !== "cancelada");
   const sold = new Map<string, number>();
   for (const item of sales) if (item.product_id) sold.set(item.product_id, (sold.get(item.product_id) ?? 0) + Number(item.quantity));
-  const rows = (inventory.data ?? []).map((row) => { const qty = Number(row.quantity); const annual = sold.get(row.product_id) ?? 0; const daily = annual / 365; return { productId: row.product_id, product: row.products?.name, sku: row.products?.sku, quantity: qty, sold365: annual, turnover: qty > 0 ? annual / qty : null, coverageDays: daily > 0 ? qty / daily : null, capital: qty * Number(row.avg_cost) }; }).sort((a,b) => b.capital - a.capital);
+  const rows = (inventory.data ?? []).map((row: any) => { const qty = Number(row.quantity); const annual = sold.get(row.product_id) ?? 0; const daily = annual / 365; return { productId: row.product_id, product: row.products?.name, sku: row.products?.sku, quantity: qty, sold365: annual, turnover: qty > 0 ? annual / qty : null, coverageDays: daily > 0 ? qty / daily : null, capital: qty * Number(row.avg_cost) }; }).sort((a: any,b: any) => b.capital - a.capital);
   return { tool: "get_stock_turnover", sufficient: rows.length > 0 && sales.length > 0, missing: rows.length ? (sales.length ? undefined : ["Histórico de vendas dos produtos"]) : ["Estoque cadastrado"], data: { count: rows.length, rows: rows.slice(0, 100) } };
 }
 async function getFinance(client: Client, ctx: UserContext): Promise<ToolResult[]> {
@@ -113,11 +113,11 @@ async function getFinance(client: Client, ctx: UserContext): Promise<ToolResult[
   ]);
   for (const result of [ap, ar, cash, expenses]) if (result.error) throw result.error;
   const payableRows = ap.data ?? [], receivableRows = ar.data ?? [], cashRows = cash.data ?? [], expenseRows = expenses.data ?? [];
-  const balance = cashRows.reduce((s, row) => s + (row.direction.toLowerCase().includes("entrada") ? Number(row.amount) : -Number(row.amount)), 0);
-  const horizons = [7,15,30,60,90].map((days) => { const until = new Date(Date.now() + days * DAY).toISOString().slice(0,10); const incoming = receivableRows.filter((r) => !r.received_at && r.due_date <= until).reduce((s,r) => s + Number(r.amount) - Number(r.received_amount ?? 0), 0); const outgoing = payableRows.filter((r) => !r.paid_at && r.due_date <= until).reduce((s,r) => s + Number(r.amount) - Number(r.paid_amount ?? 0), 0); return { days, startingBalance: balance, incoming, outgoing, pessimistic: balance + incoming * .75 - outgoing, base: balance + incoming - outgoing, optimistic: balance + incoming * 1.1 - outgoing }; });
+  const balance = cashRows.reduce((s: number, row: any) => s + (row.direction.toLowerCase().includes("entrada") ? Number(row.amount) : -Number(row.amount)), 0);
+  const horizons = [7,15,30,60,90].map((days) => { const until = new Date(Date.now() + days * DAY).toISOString().slice(0,10); const incoming = receivableRows.filter((r: any) => !r.received_at && r.due_date <= until).reduce((s: number,r: any) => s + Number(r.amount) - Number(r.received_amount ?? 0), 0); const outgoing = payableRows.filter((r: any) => !r.paid_at && r.due_date <= until).reduce((s: number,r: any) => s + Number(r.amount) - Number(r.paid_amount ?? 0), 0); return { days, startingBalance: balance, incoming, outgoing, pessimistic: balance + incoming * .75 - outgoing, base: balance + incoming - outgoing, optimistic: balance + incoming * 1.1 - outgoing }; });
   return [
-    { tool: "get_accounts_payable", sufficient: payableRows.length > 0, data: { openTotal: payableRows.filter(r=>!r.paid_at).reduce((s,r)=>s+Number(r.amount)-Number(r.paid_amount??0),0), rows: payableRows.slice(0,100) }, missing: payableRows.length ? undefined : ["Contas a pagar"] },
-    { tool: "get_accounts_receivable", sufficient: receivableRows.length > 0, data: { openTotal: receivableRows.filter(r=>!r.received_at).reduce((s,r)=>s+Number(r.amount)-Number(r.received_amount??0),0), rows: receivableRows.slice(0,100) }, missing: receivableRows.length ? undefined : ["Contas a receber"] },
+    { tool: "get_accounts_payable", sufficient: payableRows.length > 0, data: { openTotal: payableRows.filter((r: any)=>!r.paid_at).reduce((s: number,r: any)=>s+Number(r.amount)-Number(r.paid_amount??0),0), rows: payableRows.slice(0,100) }, missing: payableRows.length ? undefined : ["Contas a pagar"] },
+    { tool: "get_accounts_receivable", sufficient: receivableRows.length > 0, data: { openTotal: receivableRows.filter((r: any)=>!r.received_at).reduce((s: number,r: any)=>s+Number(r.amount)-Number(r.received_amount??0),0), rows: receivableRows.slice(0,100) }, missing: receivableRows.length ? undefined : ["Contas a receber"] },
     { tool: "get_cash_flow", sufficient: cashRows.length > 0, data: { currentBalance: balance, projections: horizons, assumptions: { pessimistic: "75% dos recebimentos previstos", base: "100% dos recebimentos previstos", optimistic: "110% dos recebimentos previstos", formula: "saldo inicial + entradas - saídas" }, rows: cashRows.slice(0,100) }, missing: cashRows.length ? undefined : ["Lançamentos de caixa"] },
     { tool: "get_expenses", sufficient: expenseRows.length > 0, period: "90 dias", data: { total: total(expenseRows, "amount"), rows: expenseRows.slice(0,100) }, missing: expenseRows.length ? undefined : ["Despesas"] },
   ];
@@ -135,6 +135,7 @@ async function getEntityList(client: Client, ctx: UserContext, tool: string): Pr
   };
   if (["get_purchases","get_discounts"].includes(tool) && !ctx.roles.some((role) => ["ADMIN","GERENTE","FINANCEIRO","ESTOQUE"].includes(role))) return denied(tool);
   const spec = map[tool];
+  if (!spec) return { tool, sufficient: false, data: {}, missing: ["Ferramenta reconhecida"] };
   const { data, error } = await scoped(client.from(spec.table).select(spec.select).limit(300), ctx.storeId);
   if (error) throw error;
   return { tool, sufficient: (data ?? []).length > 0, missing: data?.length ? undefined : [`Dados de ${tool.replace("get_", "").replaceAll("_", " ")}`], data: { count: data?.length ?? 0, rows: data ?? [] } };
@@ -191,7 +192,7 @@ async function callAI(question: string, history: AgentMessage[], results: ToolRe
   ] }) });
   if (!response.ok) throw new Error("O Gerente Virtual não conseguiu concluir a análise agora.");
   const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens?: number } };
-  let content = payload.choices?.[0]?.message?.content?.trim() || deterministicAnswer(results, insufficient, inconsistent);
+  let content = payload.choices?.[0]?.message?.content?.trim() || deterministicAnswer(results, insufficient, inconsistent).content;
   if (insufficient && !content.includes("DADOS INSUFICIENTES")) content = `DADOS INSUFICIENTES\n\n${content}`;
   if (inconsistent && !content.includes("INCONSISTÊNCIA DETECTADA")) content = `INCONSISTÊNCIA DETECTADA\n\n${content}`;
   return { content, tokens: payload.usage?.total_tokens ?? null };
@@ -203,7 +204,7 @@ function deterministicAnswer(results: ToolResult[], insufficient: boolean, incon
 }
 function parseStockAction(message: string) {
   const match = message.match(/(?:atualiz\w*|ajust\w*|altere?)\s+(?:o\s+)?estoque\s+(?:do\s+produto\s+)?(.+?)\s+(?:para|em)\s+(-?\d+(?:[.,]\d+)?)/i);
-  return match ? { productSearch: match[1].trim(), quantity: Number(match[2].replace(",", ".")) } : null;
+  return match?.[1] && match[2] ? { productSearch: match[1].trim(), quantity: Number(match[2].replace(",", ".")) } : null;
 }
 
 export async function listConversations(client: Client, userId: string) {
@@ -222,7 +223,7 @@ export async function getConversation(client: Client, userId: string, conversati
   if (me) throw me; if (ae) throw ae;
   return { conversation: conversation as AgentConversation, messages: (messages ?? []) as AgentMessage[], actions: (actions ?? []) as AgentAction[] };
 }
-export async function sendMessage(client: Client, userId: string, input: { conversationId?: string; message: string; report?: string }): Promise<AgentTurn> {
+export async function sendMessage(client: Client, userId: string, input: { conversationId?: string | undefined; message: string; report?: string | undefined }): Promise<AgentTurn> {
   const ctx = await getContext(client, userId);
   let conversationId = input.conversationId;
   if (conversationId) {
