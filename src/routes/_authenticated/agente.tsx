@@ -66,8 +66,12 @@ function AgentePage() {
 
   useEffect(() => {
     refreshList().then((rows) => {
-      if (rows[0]) return openConversation(rows[0].id);
-      setLoadingHistory(false);
+      const first = rows[0];
+      if (first) {
+        void openConversation(first.id);
+      } else {
+        setLoadingHistory(false);
+      }
     }).catch(() => setLoadingHistory(false));
   }, [refreshList, openConversation]);
 
@@ -92,7 +96,8 @@ function AgentePage() {
       const result = await sendFn({ data: { ...(conversationId ? { conversationId } : {}), message: clean, ...(report ? { report } : {}) } });
       setConversationId(result.conversationId);
       setMessages((current) => [...current.filter((item) => item.id !== optimistic.id), optimistic, result.message]);
-      if (result.action) setActions((current) => [result.action, ...current]);
+      const createdAction = result.action;
+      if (createdAction) setActions((current) => [createdAction, ...current]);
       await refreshList();
     } catch (error) {
       setMessages((current) => current.filter((item) => item.id !== optimistic.id));
@@ -227,7 +232,7 @@ function ActionCard({ action, onDecide }: { action: AgentAction; onDecide: (id: 
   return (
     <div className="ml-11 border-l-4 border-warning bg-warning/10 p-4">
       <div className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="size-4 text-warning" /> Confirmação obrigatória</div>
-      <p className="mt-2 text-sm">Atualizar estoque de <strong>{String(payload.productName ?? "produto")}</strong>: <strong>{String(payload.previousQuantity ?? "—")}</strong> → <strong>{String(payload.newQuantity ?? "—")}</strong>.</p>
+      <p className="mt-2 text-sm">Atualizar estoque de <strong>{String(payload["productName"] ?? "produto")}</strong>: <strong>{String(payload["previousQuantity"] ?? "—")}</strong> → <strong>{String(payload["newQuantity"] ?? "—")}</strong>.</p>
       <p className="mt-1 text-xs text-muted-foreground">A alteração só será aplicada depois da confirmação e ficará registrada na auditoria.</p>
       <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => onDecide(action.id, true)}><Check /> Confirmar</Button><Button size="sm" variant="outline" onClick={() => onDecide(action.id, false)}><X /> Rejeitar</Button></div>
     </div>
