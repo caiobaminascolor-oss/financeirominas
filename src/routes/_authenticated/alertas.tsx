@@ -7,7 +7,7 @@ import { DataTable } from "@/components/DataTable";
 import { ClassBadge, type Tone } from "@/components/ClassBadge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { classifyStock, useProductAnalytics, useSales } from "@/lib/analytics";
-import { buildCashProjection, useAlerts, useDiscounts, useExpenses, usePayables, useQuotes, useReceivables, useTargets } from "@/lib/data";
+import { buildCashProjection, useAlerts, useCustomers, useDiscounts, useExpenses, usePayables, useQuotes, useReceivables, useTargets } from "@/lib/data";
 import { brl, daysBetween, num } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/alertas")({
@@ -49,6 +49,7 @@ function AlertasPage() {
   const sales30 = useSales(30);
   const sales90 = useSales(90);
   const discounts = useDiscounts();
+  const customers = useCustomers();
   const ap = usePayables();
   const ar = useReceivables();
   const expenses = useExpenses();
@@ -57,7 +58,7 @@ function AlertasPage() {
   const stored = useAlerts();
   const [filter, setFilter] = useState("todos");
 
-  const loading = inventory.loading || sales30.isLoading || sales90.isLoading || discounts.isLoading || ap.isLoading || ar.isLoading || expenses.isLoading || quotes.isLoading || targets.isLoading || stored.isLoading;
+  const loading = inventory.loading || sales30.isLoading || sales90.isLoading || discounts.isLoading || customers.isLoading || ap.isLoading || ar.isLoading || expenses.isLoading || quotes.isLoading || targets.isLoading || stored.isLoading;
 
   const alerts = useMemo<ManagerAlert[]>(() => {
     const out: ManagerAlert[] = [];
@@ -71,6 +72,9 @@ function AlertasPage() {
     const stopped = stock.filter((r) => r.cls.label === "Dinheiro parado");
     const stoppedValue = stopped.reduce((s,r) => s + r.stockValue, 0);
     if (stopped.length) add({ id: "parado", priority: "P2", category: "Estoque", title: `${brl(stoppedValue)} em capital parado`, problem: `${stopped.length} SKU(s) sem giro relevante.`, cause: "Estoque com venda nula em 12 meses ou sem venda há mais de 180 dias.", impact: "Caixa imobilizado e risco de perda/obsolescência.", solution: "Suspender novas compras e criar plano de giro sem vender abaixo do custo.", owner: "Gerência / Comercial", deadline: "7 dias", source: "Calculado" });
+
+    const excessiveStock = stock.filter((r) => r.cls.label === "Excessivo");
+    if (excessiveStock.length) add({ id: "excessive-stock", priority: "P2", category: "Estoque", title: `${excessiveStock.length} SKU(s) com estoque excessivo`, problem: "A cobertura supera 180 dias ou a quantidade está acima do máximo cadastrado.", cause: excessiveStock.slice(0,3).map((r) => r.name).join(", "), impact: `Capital exposto: ${brl(excessiveStock.reduce((s,r) => s + r.stockValue, 0))}.`, solution: "Interromper reposição, revisar estoque máximo e acelerar giro preservando margem.", owner: "Estoque / Compras", deadline: "5 dias", source: "Calculado" });
 
     const belowCost = (discounts.data ?? []).filter((d) => d.below_cost);
     if (belowCost.length) add({ id: "below-cost", priority: "P1", category: "Margem", title: `${belowCost.length} venda(s) abaixo do custo`, problem: "Há descontos que produziram venda abaixo do custo.", cause: "Preço líquido inferior ao custo registrado.", impact: `Desconto envolvido: ${brl(belowCost.reduce((s,d) => s + d.discount_amount, 0))}; destruição direta de margem.`, solution: "Bloquear recorrência, revisar autorização e custo dos produtos afetados.", owner: "Gerência", deadline: "Hoje", source: "Calculado" });
@@ -99,6 +103,9 @@ function AlertasPage() {
     const staleQuotes = (quotes.data ?? []).filter((q) => !q.converted_sale_id && !["perdido", "convertido"].includes(q.status) && daysBetween(q.issued_at) > 15);
     if (staleQuotes.length) add({ id: "quotes", priority: "P3", category: "Orçamentos", title: `${staleQuotes.length} orçamento(s) parado(s)`, problem: `Há ${brl(staleQuotes.reduce((s,q) => s + q.total, 0))} sem desfecho há mais de 15 dias.`, cause: "Follow-up ausente ou status não atualizado.", impact: "Receita potencial esfriando no funil.", solution: "Contatar clientes, registrar objeção e atualizar o status.", owner: "Equipe comercial", deadline: "2 dias", source: "Calculado" });
 
+    const inactiveCustomers = (customers.data ?? []).filter((c) => c.last_purchase_at && daysBetween(c.last_purchase_at) > 180);
+    if (inactiveCustomers.length) add({ id: "inactive-customers", priority: "P3", category: "Clientes", title: `${inactiveCustomers.length} cliente(s) inativo(s)`, problem: "Clientes estão há mais de 180 dias sem comprar.", cause: inactiveCustomers.slice(0,3).map((c) => c.name).join(", "), impact: "Perda de recorrência e redução da base ativa.", solution: "Priorizar contato por valor histórico e investigar motivo da inatividade.", owner: "Equipe comercial", deadline: "7 dias", source: "Calculado" });
+
     const now = new Date();
     const riskyTargets = (targets.data ?? []).filter((t) => new Date(t.period_start) <= now && new Date(t.period_end) >= now).filter((t) => {
       const elapsed = Math.max(0, now.getTime() - new Date(t.period_start).getTime());
@@ -112,7 +119,7 @@ function AlertasPage() {
     for (const a of stored.data ?? []) if (a.status !== "resolvido" && !a.resolved_at) add({ id: `stored-${a.id}`, priority: a.priority, category: a.category ?? "Geral", title: a.title, problem: a.message ?? "Alerta registrado sem detalhamento.", cause: "Registrado na central de alertas.", impact: "Verificar contexto do registro.", solution: "Analisar e atribuir responsável antes de resolver.", owner: "Gerência", deadline: a.priority === "P1" ? "Hoje" : "7 dias", source: "Registrado" });
 
     return out.sort((a,b) => a.priority.localeCompare(b.priority));
-  }, [inventory.rows, sales30.data, sales90.data, discounts.data, ap.data, ar.data, expenses.data, quotes.data, targets.data, stored.data]);
+  }, [inventory.rows, sales30.data, sales90.data, discounts.data, customers.data, ap.data, ar.data, expenses.data, quotes.data, targets.data, stored.data]);
 
   const filtered = filter === "todos" ? alerts : alerts.filter((a) => a.priority === filter);
   if (loading) return <Shell><TableSkeleton /></Shell>;
