@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { archiveAgentConversation, decideAgentAction, getAgentConversation, listAgentConversations, sendAgentMessage } from "@/lib/agent.functions";
-import type { AgentAction, AgentConversation, AgentMessage } from "@/lib/agent.server";
+import type { AgentAction, AgentConversation, AgentMessage } from "@/lib/agent.types";
 
 export const Route = createFileRoute("/_authenticated/agente")({
   head: () => ({

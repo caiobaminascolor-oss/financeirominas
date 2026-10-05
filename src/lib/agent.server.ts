@@ -1,12 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
+import type { AgentAction, AgentConversation, AgentMessage, AgentTurn } from "@/lib/agent.types";
+
+export type { AgentAction, AgentConversation, AgentMessage, AgentTurn } from "@/lib/agent.types";
 
 type Client = SupabaseClient<Database>;
 type Role = Database["public"]["Enums"]["app_role"];
-export type AgentMessage = { id: string; role: string; content: string | null; created_at: string; tool_calls: Json | null; tool_results: Json | null };
-export type AgentConversation = { id: string; title: string | null; last_message_at: string | null; archived: boolean };
-export type AgentAction = { id: string; action_type: string; status: string; payload: Json; result: Json | null; created_at: string };
-export type AgentTurn = { conversationId: string; message: AgentMessage; action?: AgentAction };
 
 type ToolResult = { tool: string; sufficient: boolean; inconsistent?: boolean | undefined; accessDenied?: boolean | undefined; period?: string | undefined; data: Json; missing?: string[] | undefined };
 type UserContext = { userId: string; storeId: string | null; roles: Role[]; canSeeFinance: boolean };
