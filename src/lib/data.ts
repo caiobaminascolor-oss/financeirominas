@@ -120,6 +120,31 @@ export type DiscountRow = {
   salespeople: { name: string } | null;
 };
 
+export type CommissionRow = {
+  id: string;
+  salesperson_id: string | null;
+  sale_id: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  base_amount: number;
+  rate: number;
+  amount: number;
+  status: string;
+};
+
+export type AlertRow = {
+  id: string;
+  priority: "P1" | "P2" | "P3" | "P4";
+  category: string | null;
+  title: string;
+  message: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  status: string;
+  resolved_at: string | null;
+  created_at: string;
+};
+
 function simpleQuery<T>(key: string, table: string, select: string, limit = 3000) {
   return () =>
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -191,6 +216,18 @@ export const useDiscounts = simpleQuery<DiscountRow>(
   "discounts",
   "discounts",
   "id, sale_id, product_id, salesperson_id, discount_pct, discount_amount, below_cost, approved_by, notes, created_at, products(name, sku), salespeople(name)",
+);
+
+export const useCommissions = simpleQuery<CommissionRow>(
+  "commissions",
+  "commissions",
+  "id, salesperson_id, sale_id, period_start, period_end, base_amount, rate, amount, status",
+);
+
+export const useAlerts = simpleQuery<AlertRow>(
+  "alerts",
+  "alerts",
+  "id, priority, category, title, message, entity_type, entity_id, status, resolved_at, created_at",
 );
 
 /* ---------------------------------------------------------------- */

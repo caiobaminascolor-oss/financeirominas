@@ -13,6 +13,7 @@ import {
   Target,
   Megaphone,
   Bell,
+  BadgePercent,
   BarChart3,
   Upload,
   Settings,
@@ -45,6 +46,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Financeiro", to: "/financeiro", icon: Wallet, group: "Financeiro", roles: ["ADMIN", "GERENTE", "FINANCEIRO"] },
 
   { label: "Equipe", to: "/equipe", icon: UserCog, group: "Inteligência" },
+  { label: "Descontos", to: "/descontos", icon: BadgePercent, group: "Inteligência", roles: ["ADMIN", "GERENTE", "FINANCEIRO"] },
   { label: "Marketing", to: "/marketing", icon: Megaphone, group: "Inteligência" },
   { label: "Alertas", to: "/alertas", icon: Bell, group: "Inteligência" },
   { label: "Relatórios", to: "/relatorios", icon: BarChart3, group: "Inteligência" },
