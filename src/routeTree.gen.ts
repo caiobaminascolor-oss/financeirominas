@@ -23,13 +23,13 @@ import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedEstoqueRouteImport } from './routes/_authenticated/estoque'
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
 import { Route as AuthenticatedFornecedoresRouteImport } from './routes/_authenticated/fornecedores'
-import { Route as AuthenticatedImportacoesRouteImport } from './routes/_authenticated/importacoes'
 import { Route as AuthenticatedMarketingRouteImport } from './routes/_authenticated/marketing'
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedOrcamentosRouteImport } from './routes/_authenticated/orcamentos'
 import { Route as AuthenticatedProdutosParadosRouteImport } from './routes/_authenticated/produtos-parados'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedVendasRouteImport } from './routes/_authenticated/vendas'
+import { Route as AuthenticatedImportacoesIndexRouteImport } from './routes/_authenticated/importacoes.index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -102,12 +102,6 @@ const AuthenticatedFornecedoresRoute =
     path: '/fornecedores',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedImportacoesRoute =
-  AuthenticatedImportacoesRouteImport.update({
-    id: '/importacoes',
-    path: '/importacoes',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedMarketingRoute = AuthenticatedMarketingRouteImport.update({
   id: '/marketing',
   path: '/marketing',
@@ -139,6 +133,12 @@ const AuthenticatedVendasRoute = AuthenticatedVendasRouteImport.update({
   path: '/vendas',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedImportacoesIndexRoute =
+  AuthenticatedImportacoesIndexRouteImport.update({
+    id: '/importacoes/',
+    path: '/importacoes/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -154,13 +154,13 @@ export interface FileRoutesByFullPath {
   '/estoque': typeof AuthenticatedEstoqueRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/fornecedores': typeof AuthenticatedFornecedoresRoute
-  '/importacoes': typeof AuthenticatedImportacoesRoute
   '/marketing': typeof AuthenticatedMarketingRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/orcamentos': typeof AuthenticatedOrcamentosRoute
   '/produtos-parados': typeof AuthenticatedProdutosParadosRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/vendas': typeof AuthenticatedVendasRoute
+  '/importacoes/': typeof AuthenticatedImportacoesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -176,13 +176,13 @@ export interface FileRoutesByTo {
   '/estoque': typeof AuthenticatedEstoqueRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/fornecedores': typeof AuthenticatedFornecedoresRoute
-  '/importacoes': typeof AuthenticatedImportacoesRoute
   '/marketing': typeof AuthenticatedMarketingRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/orcamentos': typeof AuthenticatedOrcamentosRoute
   '/produtos-parados': typeof AuthenticatedProdutosParadosRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/vendas': typeof AuthenticatedVendasRoute
+  '/importacoes': typeof AuthenticatedImportacoesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -200,13 +200,13 @@ export interface FileRoutesById {
   '/_authenticated/estoque': typeof AuthenticatedEstoqueRoute
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
   '/_authenticated/fornecedores': typeof AuthenticatedFornecedoresRoute
-  '/_authenticated/importacoes': typeof AuthenticatedImportacoesRoute
   '/_authenticated/marketing': typeof AuthenticatedMarketingRoute
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/orcamentos': typeof AuthenticatedOrcamentosRoute
   '/_authenticated/produtos-parados': typeof AuthenticatedProdutosParadosRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/vendas': typeof AuthenticatedVendasRoute
+  '/_authenticated/importacoes/': typeof AuthenticatedImportacoesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -224,13 +224,13 @@ export interface FileRouteTypes {
     | '/estoque'
     | '/financeiro'
     | '/fornecedores'
-    | '/importacoes'
     | '/marketing'
     | '/metas'
     | '/orcamentos'
     | '/produtos-parados'
     | '/relatorios'
     | '/vendas'
+    | '/importacoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -246,13 +246,13 @@ export interface FileRouteTypes {
     | '/estoque'
     | '/financeiro'
     | '/fornecedores'
-    | '/importacoes'
     | '/marketing'
     | '/metas'
     | '/orcamentos'
     | '/produtos-parados'
     | '/relatorios'
     | '/vendas'
+    | '/importacoes'
   id:
     | '__root__'
     | '/'
@@ -269,13 +269,13 @@ export interface FileRouteTypes {
     | '/_authenticated/estoque'
     | '/_authenticated/financeiro'
     | '/_authenticated/fornecedores'
-    | '/_authenticated/importacoes'
     | '/_authenticated/marketing'
     | '/_authenticated/metas'
     | '/_authenticated/orcamentos'
     | '/_authenticated/produtos-parados'
     | '/_authenticated/relatorios'
     | '/_authenticated/vendas'
+    | '/_authenticated/importacoes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -384,13 +384,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFornecedoresRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/importacoes': {
-      id: '/_authenticated/importacoes'
-      path: '/importacoes'
-      fullPath: '/importacoes'
-      preLoaderRoute: typeof AuthenticatedImportacoesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/marketing': {
       id: '/_authenticated/marketing'
       path: '/marketing'
@@ -433,6 +426,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedVendasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/importacoes/': {
+      id: '/_authenticated/importacoes/'
+      path: '/importacoes'
+      fullPath: '/importacoes/'
+      preLoaderRoute: typeof AuthenticatedImportacoesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -448,13 +448,13 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedEstoqueRoute: typeof AuthenticatedEstoqueRoute
   AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
   AuthenticatedFornecedoresRoute: typeof AuthenticatedFornecedoresRoute
-  AuthenticatedImportacoesRoute: typeof AuthenticatedImportacoesRoute
   AuthenticatedMarketingRoute: typeof AuthenticatedMarketingRoute
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedOrcamentosRoute: typeof AuthenticatedOrcamentosRoute
   AuthenticatedProdutosParadosRoute: typeof AuthenticatedProdutosParadosRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedVendasRoute: typeof AuthenticatedVendasRoute
+  AuthenticatedImportacoesIndexRoute: typeof AuthenticatedImportacoesIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -469,13 +469,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedEstoqueRoute: AuthenticatedEstoqueRoute,
   AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
   AuthenticatedFornecedoresRoute: AuthenticatedFornecedoresRoute,
-  AuthenticatedImportacoesRoute: AuthenticatedImportacoesRoute,
   AuthenticatedMarketingRoute: AuthenticatedMarketingRoute,
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedOrcamentosRoute: AuthenticatedOrcamentosRoute,
   AuthenticatedProdutosParadosRoute: AuthenticatedProdutosParadosRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedVendasRoute: AuthenticatedVendasRoute,
+  AuthenticatedImportacoesIndexRoute: AuthenticatedImportacoesIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
