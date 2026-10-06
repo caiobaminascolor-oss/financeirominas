@@ -319,6 +319,8 @@ export type Database = {
           category: string | null
           created_at: string
           created_by: string | null
+          dedup_key: string | null
+          details: Json
           entity_id: string | null
           entity_type: string | null
           id: string
@@ -326,6 +328,7 @@ export type Database = {
           priority: Database["public"]["Enums"]["alert_priority"]
           resolved_at: string | null
           resolved_by: string | null
+          source: string
           status: string
           store_id: string | null
           title: string
@@ -335,6 +338,8 @@ export type Database = {
           category?: string | null
           created_at?: string
           created_by?: string | null
+          dedup_key?: string | null
+          details?: Json
           entity_id?: string | null
           entity_type?: string | null
           id?: string
@@ -342,6 +347,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["alert_priority"]
           resolved_at?: string | null
           resolved_by?: string | null
+          source?: string
           status?: string
           store_id?: string | null
           title: string
@@ -351,6 +357,8 @@ export type Database = {
           category?: string | null
           created_at?: string
           created_by?: string | null
+          dedup_key?: string | null
+          details?: Json
           entity_id?: string | null
           entity_type?: string | null
           id?: string
@@ -358,6 +366,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["alert_priority"]
           resolved_at?: string | null
           resolved_by?: string | null
+          source?: string
           status?: string
           store_id?: string | null
           title?: string
@@ -788,6 +797,7 @@ export type Database = {
       }
       imports: {
         Row: {
+          column_mapping: Json
           created_at: string
           created_by: string | null
           errors: Json
@@ -796,17 +806,23 @@ export type Database = {
           file_type: string | null
           finished_at: string | null
           id: string
+          rejected_rows: Json
           rows_error: number
+          rows_inserted: number
           rows_ok: number
           rows_total: number
+          rows_updated: number
+          rows_warning: number
           started_at: string | null
           status: string
           store_id: string | null
           target_entity: string | null
           updated_at: string
           warnings: Json
+          write_mode: string
         }
         Insert: {
+          column_mapping?: Json
           created_at?: string
           created_by?: string | null
           errors?: Json
@@ -815,17 +831,23 @@ export type Database = {
           file_type?: string | null
           finished_at?: string | null
           id?: string
+          rejected_rows?: Json
           rows_error?: number
+          rows_inserted?: number
           rows_ok?: number
           rows_total?: number
+          rows_updated?: number
+          rows_warning?: number
           started_at?: string | null
           status?: string
           store_id?: string | null
           target_entity?: string | null
           updated_at?: string
           warnings?: Json
+          write_mode?: string
         }
         Update: {
+          column_mapping?: Json
           created_at?: string
           created_by?: string | null
           errors?: Json
@@ -834,15 +856,20 @@ export type Database = {
           file_type?: string | null
           finished_at?: string | null
           id?: string
+          rejected_rows?: Json
           rows_error?: number
+          rows_inserted?: number
           rows_ok?: number
           rows_total?: number
+          rows_updated?: number
+          rows_warning?: number
           started_at?: string | null
           status?: string
           store_id?: string | null
           target_entity?: string | null
           updated_at?: string
           warnings?: Json
+          write_mode?: string
         }
         Relationships: [
           {

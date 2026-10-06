@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Upload } from "lucide-react";
 import { ModulePage } from "@/components/ModulePage";
 
-export const Route = createFileRoute("/_authenticated/importacoes")({
+export const Route = createFileRoute("/_authenticated/importacoes/")({
   head: () => ({
     meta: [
       { title: "Importações — MINASCOLOR CONTROL" },
