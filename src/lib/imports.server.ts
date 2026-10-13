@@ -24,6 +24,7 @@ async function getContext(client: Client, userId: string) {
     client.from("profiles").select("store_id").eq("id", userId).maybeSingle(),
     client.from("user_roles").select("role").eq("user_id", userId),
   ]);
+  if (!profile) throw new Error("Perfil não encontrado.");
   const roles = (roleRows ?? []).map((r) => r.role as string);
   return { userId, storeId: profile?.store_id ?? null, roles, canSeeFinance: roles.some((r) => FINANCE.includes(r)) };
 }
@@ -43,7 +44,7 @@ async function chunked<T>(items: T[], size: number, fn: (item: T) => Promise<voi
   for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
 }
 
-function compact<T extends Record<string, unknown>>(obj: T) {
+function compact(obj: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)) as Any;
 }
 
@@ -194,15 +195,13 @@ async function writeSales(client: Client, ctx: Ctx, rows: ValidatedRow[], issues
     const subtotal = round(items.reduce((s, i) => s + i.quantity * i.unit_price, 0));
     const total = round(items.reduce((s, i) => s + i.total, 0));
     const cost_total = round(items.reduce((s, i) => s + i.unit_cost * i.quantity, 0));
-    const { data: sale, error } = await client.from("sales").insert({
+    const { error } = await client.rpc("import_document", { _entity: "sales", _header: compact({
       sale_number: number, sold_at: `${head["sold_at"]}T12:00:00Z`, customer_id, salesperson_id,
       payment_method: (head["payment_method"] as string) ?? null, status: head["status"] ? String(head["status"]).toLowerCase() : undefined,
       subtotal, discount_amount: round(subtotal - total), total, cost_total, gross_profit: round(total - cost_total),
       margin_pct: total > 0 ? round(((total - cost_total) / total) * 100) : null, store_id: ctx.storeId, created_by: ctx.userId,
-    }).select("id").single();
-    if (error || !sale) { lines.forEach((l) => issues.error(l, `Falha ao gravar venda: ${error?.message}`)); continue; }
-    const { error: itemErr } = await client.from("sale_items").insert(items.map((i) => ({ ...i, sale_id: sale.id, created_by: ctx.userId })));
-    if (itemErr) { await client.from("sales").delete().eq("id", sale.id); lines.forEach((l) => issues.error(l, `Falha nos itens: ${itemErr.message}`)); continue; }
+    }), _items: items });
+    if (error) { lines.forEach((l) => issues.error(l, `Falha ao gravar venda: ${error.message}`)); continue; }
     known.add(key(number));
     res.inserted++;
   }
@@ -223,13 +222,11 @@ async function writePurchases(client: Client, ctx: Ctx, rows: ValidatedRow[], is
     for (const l of lines) if (!products.get(key(l.values["sku"]))) issues.error(l, `Produto "${l.values["sku"]}" não cadastrado`);
     if (lines.some((l) => l.status === "ERRO")) { lines.forEach((l) => l.status !== "ERRO" && issues.error(l, "Compra rejeitada: produto inexistente em outra linha")); continue; }
     const items = lines.map((l) => ({ product_id: products.get(key(l.values["sku"]))?.id ?? "", quantity: l.values["quantity"] as number, unit_cost: l.values["unit_cost"] as number, total: round((l.values["quantity"] as number) * (l.values["unit_cost"] as number)) }));
-    const { data: purchase, error } = await client.from("purchases").insert({
+    const { error } = await client.rpc("import_document", { _entity: "purchases", _header: compact({
       purchase_number: number, supplier_id, ordered_at: `${head["ordered_at"]}T12:00:00Z`, received_at: head["received_at"] ? `${head["received_at"]}T12:00:00Z` : null,
       status: head["received_at"] ? "RECEBIDA" : "PENDENTE", total: round(items.reduce((s, i) => s + i.total, 0)), store_id: ctx.storeId, created_by: ctx.userId,
-    }).select("id").single();
-    if (error || !purchase) { lines.forEach((l) => issues.error(l, `Falha ao gravar compra: ${error?.message}`)); continue; }
-    const { error: itemErr } = await client.from("purchase_items").insert(items.map((i) => ({ ...i, purchase_id: purchase.id, created_by: ctx.userId })));
-    if (itemErr) { await client.from("purchases").delete().eq("id", purchase.id); lines.forEach((l) => issues.error(l, `Falha nos itens: ${itemErr.message}`)); continue; }
+    }), _items: items });
+    if (error) { lines.forEach((l) => issues.error(l, `Falha ao gravar compra: ${error.message}`)); continue; }
     known.add(key(number));
     res.inserted++;
   }
@@ -300,7 +297,36 @@ export type CommitInput = {
   mode: "insert" | "upsert";
   mapping: Record<string, string>;
   records: RawRecord[];
+  base64: string;
+  contentType: string;
+  confirmed: true;
 };
+
+export async function previewImport(client: Client, userId: string, entity: ImportEntity, records: RawRecord[]) {
+  const ctx = await getContext(client, userId);
+  if (!canImport(entity, ctx.roles)) throw new Error("Seu papel não permite esta importação.");
+  const rows = validateRecords(entity, records);
+  const issues = new RowIssues(rows);
+  if (["inventory", "sales", "purchases"].includes(entity)) {
+    const products = await productLookup(client, ctx);
+    for (const r of rows) if (r.status !== "ERRO" && !products.has(key(r.values["sku"]))) issues.error(r, `Produto "${r.values["sku"]}" não cadastrado`);
+  }
+  if (entity === "purchases") {
+    const suppliers = await nameMap(client, "suppliers", ctx);
+    for (const r of rows) if (r.status !== "ERRO" && !suppliers.has(key(r.values["supplier"]))) issues.error(r, `Fornecedor "${r.values["supplier"]}" não cadastrado`);
+  }
+  if (ENTITIES[entity].grouped) {
+    const field = ENTITIES[entity].keyField;
+    for (const group of groupRows(rows, field).values()) {
+      const h = group[0];
+      if (!h) continue;
+      const shared = entity === "sales" ? ["sold_at", "customer", "salesperson", "status"] : ["ordered_at", "supplier", "received_at"];
+      if (group.some((r) => shared.some((k) => r.values[k] !== h.values[k]))) group.forEach((r) => issues.error(r, "INCONSISTÊNCIA DETECTADA: cabeçalho diferente entre itens do documento"));
+      if (group.some((r) => r.status === "ERRO")) group.filter((r) => r.status !== "ERRO").forEach((r) => issues.error(r, "Documento rejeitado: outra linha possui erro"));
+    }
+  }
+  return rows;
+}
 
 export async function commitImport(client: Client, userId: string, input: CommitInput) {
   const ctx = await getContext(client, userId);
@@ -314,7 +340,11 @@ export async function commitImport(client: Client, userId: string, input: Commit
   }).select("id").single();
   if (impErr || !imp) throw new Error(`Não foi possível registrar a importação: ${impErr?.message}`);
 
-  const rows = validateRecords(input.entity, input.records);
+  try { await saveImportFile(client, userId, imp.id, input.fileName, input.base64, input.contentType); } catch (error) {
+    await client.from("imports").update({ status: "FALHOU", finished_at: new Date().toISOString(), errors: [{ line: 0, messages: ["Arquivo original não guardado; nenhum dado importado."] }] }).eq("id", imp.id);
+    throw error;
+  }
+  const rows = await previewImport(client, userId, input.entity, input.records);
   const issues = new RowIssues(rows);
   let result: WriteResult = { inserted: 0, updated: 0, skipped: 0 };
   let fatal: string | null = null;
@@ -330,6 +360,7 @@ export async function commitImport(client: Client, userId: string, input: Commit
     }
   } catch (e) {
     fatal = e instanceof Error ? e.message : String(e);
+    rows.forEach((r) => issues.error(r, "Processamento interrompido; confira o histórico antes de repetir."));
   }
 
   const s = summarize(rows);
@@ -339,12 +370,13 @@ export async function commitImport(client: Client, userId: string, input: Commit
   const rejected = rows.filter((r) => r.status === "ERRO").slice(0, 2000).map((r) => ({ line: r.line, record: input.records[r.line - 2], errors: r.errors }));
   const status = fatal ? "FALHOU" : s.error === s.total && s.total > 0 ? "FALHOU" : s.error ? "CONCLUIDO_COM_ERROS" : "CONCLUIDO";
 
-  await client.from("imports").update({
+  const { error: historyError } = await client.from("imports").update({
     status, rows_ok: s.total - s.error, rows_error: s.error, rows_warning: s.warning,
     rows_inserted: result.inserted, rows_updated: result.updated, errors, warnings, rejected_rows: rejected,
     finished_at: new Date().toISOString(),
   }).eq("id", imp.id);
 
+  if (historyError) throw new Error("Dados processados, mas o histórico não foi atualizado. Não repita sem conferir.");
   let reconciliation: { created: number; resolved: number; open: number } | null = null;
   try { reconciliation = await runReconciliationWith(client, ctx); } catch { reconciliation = null; }
 
@@ -365,12 +397,12 @@ export async function saveImportFile(client: Client, userId: string, importId: s
   return { path };
 }
 
-export async function getImportFileUrl(client: Client, importId: string) {
+export async function getImportFileUrl(client: Client, userId: string, importId: string) {
   // RLS: only staff can read the import row; then sign a short-lived URL.
-  const { data: imp } = await client.from("imports").select("file_path").eq("id", importId).maybeSingle();
+  const ctx = await getContext(client, userId);
+  const { data: imp } = await scoped(client.from("imports").select("file_path").eq("id", importId), ctx.storeId).maybeSingle();
   if (!imp?.file_path) throw new Error("Arquivo original não disponível.");
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data, error } = await supabaseAdmin.storage.from("imports").createSignedUrl(imp.file_path, 300);
+  const { data, error } = await client.storage.from("imports").createSignedUrl(imp.file_path, 300);
   if (error || !data) throw new Error("Não foi possível gerar o link.");
   return { url: data.signedUrl };
 }
@@ -430,52 +462,19 @@ export async function runReconciliation(client: Client, userId: string) {
   return runReconciliationWith(client, ctx);
 }
 
-export async function listImports(client: Client) {
-  const { data, error } = await client.from("imports").select("id,file_name,file_type,target_entity,status,rows_total,rows_ok,rows_error,rows_warning,rows_inserted,rows_updated,created_at,created_by,file_path").order("created_at", { ascending: false }).limit(100);
+export async function listImports(client: Client, userId: string) {
+  const ctx = await getContext(client, userId);
+  const { data, error } = await scoped(client.from("imports").select("id,file_name,file_type,target_entity,status,rows_total,rows_ok,rows_error,rows_warning,rows_inserted,rows_updated,created_at,created_by,file_path").order("created_at", { ascending: false }).limit(100), ctx.storeId);
   if (error) throw new Error(error.message);
   return data ?? [];
 }
 
-export async function getImport(client: Client, id: string) {
-  const { data, error } = await client.from("imports").select("*").eq("id", id).maybeSingle();
+export async function getImport(client: Client, userId: string, id: string) {
+  const ctx = await getContext(client, userId);
+  const { data, error } = await scoped(client.from("imports").select("*").eq("id", id), ctx.storeId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
   return JSON.parse(JSON.stringify(data)) as Record<string, Any>;
 }
 
-/** PDF → table via AI. Output is untrusted and always reviewed by the user before writing. */
-export async function extractPdfTable(base64: string, fileName: string) {
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (!apiKey) throw new Error("Leitura de PDF indisponível no momento. Exporte o relatório em Excel ou CSV.");
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      temperature: 0,
-      messages: [
-        { role: "system", content: "Você extrai a tabela principal de relatórios comerciais/financeiros em PDF. Copie valores exatamente como aparecem; nunca invente, complete ou calcule valores. Ignore cabeçalhos de página, rodapés e totais gerais." },
-        { role: "user", content: [
-          { type: "text", text: `Extraia a tabela de dados do arquivo ${fileName}.` },
-          { type: "file", file: { filename: fileName, file_data: `data:application/pdf;base64,${base64}` } },
-        ] },
-      ],
-      tools: [{ type: "function", function: { name: "return_table", description: "Retorna a tabela extraída", parameters: { type: "object", properties: {
-        headers: { type: "array", items: { type: "string" } },
-        rows: { type: "array", items: { type: "array", items: { type: "string" } } },
-      }, required: ["headers", "rows"] } } }],
-      tool_choice: { type: "function", function: { name: "return_table" } },
-    }),
-  });
-  if (response.status === 429) throw new Error("Muitas leituras seguidas. Aguarde um minuto e tente de novo.");
-  if (response.status === 402) throw new Error("Créditos de IA esgotados. Adicione créditos ou importe em Excel/CSV.");
-  if (!response.ok) throw new Error("Não foi possível ler o PDF. Tente exportar em Excel ou CSV.");
-  const json = (await response.json()) as Any;
-  const args = json?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-  let parsed: { headers?: unknown; rows?: unknown } = {};
-  try { parsed = JSON.parse(args ?? "{}"); } catch { /* handled below */ }
-  const headers = Array.isArray(parsed.headers) ? parsed.headers.map((h) => String(h).slice(0, 100)).slice(0, 60) : [];
-  const rows = Array.isArray(parsed.rows) ? (parsed.rows as unknown[]).filter(Array.isArray).slice(0, MAX_IMPORT_ROWS).map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c).slice(0, 500)))) : [];
-  if (!headers.length || !rows.length) throw new Error("DADOS INSUFICIENTES: nenhuma tabela legível encontrada no PDF.");
-  return { headers, rows: rows.map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""]))) };
-}
+export { extractPdfTable } from "./pdf-extraction.server";
