@@ -323,11 +323,11 @@ export function validateRecords(entity: ImportEntity, records: RawRecord[], firs
       if (price != null && disc > price * qty) errors.push("Desconto maior que o valor do item");
     }
     if (entity === "accounts_payable") {
-      if (num("paid_amount") != null && !values.paid_at) warnings.push("Valor pago sem data de pagamento");
+      if (num("paid_amount") != null && !values["paid_at"]) warnings.push("Valor pago sem data de pagamento");
       if ((num("paid_amount") ?? 0) > (num("amount") ?? Infinity)) warnings.push("Valor pago maior que o título");
     }
     if (entity === "accounts_receivable") {
-      if (num("received_amount") != null && !values.received_at) warnings.push("Valor recebido sem data");
+      if (num("received_amount") != null && !values["received_at"]) warnings.push("Valor recebido sem data");
       if ((num("received_amount") ?? 0) > (num("amount") ?? Infinity)) warnings.push("Valor recebido maior que o título");
     }
 

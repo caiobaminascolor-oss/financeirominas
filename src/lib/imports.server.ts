@@ -29,7 +29,7 @@ async function getContext(client: Client, userId: string) {
 }
 type Ctx = Awaited<ReturnType<typeof getContext>>;
 
-const scoped = (q: Any, storeId: string | null) => (storeId ? q.eq("store_id", storeId) : q);
+const scoped = (q: Any, storeId: string | null) => (storeId ? q.eq("store_id", storeId) : q.is("store_id", null));
 const key = (s: unknown) => (s == null ? "" : normalizeHeader(String(s)));
 const digits = (s: unknown) => (s == null ? "" : String(s).replace(/\D/g, ""));
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -44,7 +44,7 @@ async function chunked<T>(items: T[], size: number, fn: (item: T) => Promise<voi
 }
 
 function compact<T extends Record<string, unknown>>(obj: T) {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)) as Partial<T>;
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)) as Any;
 }
 
 type WriteResult = { inserted: number; updated: number; skipped: number };
@@ -65,7 +65,7 @@ async function writeProducts(client: Client, ctx: Ctx, rows: ValidatedRow[], mod
   if (!inventoryOnly) {
     const categories = await nameMap(client, "categories", ctx);
     const suppliers = await nameMap(client, "suppliers", ctx);
-    const missingCats = [...new Set(issues.valid().map((r) => r.values.category).filter(Boolean).map(String))].filter((c) => !categories.has(key(c)));
+    const missingCats = [...new Set(issues.valid().map((r) => r.values["category"]).filter(Boolean).map(String))].filter((c) => !categories.has(key(c)));
     if (missingCats.length) {
       const { data } = await client.from("categories").insert(missingCats.map((name) => ({ name, store_id: ctx.storeId, created_by: ctx.userId }))).select("id,name");
       for (const c of data ?? []) categories.set(key(c.name), c.id);
@@ -74,14 +74,14 @@ async function writeProducts(client: Client, ctx: Ctx, rows: ValidatedRow[], mod
     const updates: { row: ValidatedRow; id: string; payload: Any }[] = [];
     for (const row of issues.valid()) {
       const v = row.values;
-      const supplier_id = v.supplier ? suppliers.get(key(v.supplier)) : undefined;
-      if (v.supplier && !supplier_id) issues.warn(row, `Fornecedor "${v.supplier}" não cadastrado — produto ficou sem fornecedor`);
+      const supplier_id = v["supplier"] ? suppliers.get(key(v["supplier"])) : undefined;
+      if (v["supplier"] && !supplier_id) issues.warn(row, `Fornecedor "${v["supplier"]}" não cadastrado — produto ficou sem fornecedor`);
       const payload = compact({
-        sku: v.sku, name: v.name, brand: v.brand, unit: v.unit, barcode: v.barcode,
-        cost_price: v.cost_price, sale_price: v.sale_price, min_stock: v.min_stock, max_stock: v.max_stock,
-        category_id: v.category ? categories.get(key(v.category)) : undefined, supplier_id,
+        sku: v["sku"], name: v["name"], brand: v["brand"], unit: v["unit"], barcode: v["barcode"],
+        cost_price: v["cost_price"], sale_price: v["sale_price"], min_stock: v["min_stock"], max_stock: v["max_stock"],
+        category_id: v["category"] ? categories.get(key(v["category"])) : undefined, supplier_id,
       });
-      const id = bySku.get(key(v.sku));
+      const id = bySku.get(key(v["sku"]));
       if (id) {
         if (mode === "insert") { issues.warn(row, "Produto já existe — ignorado (modo somente novos)"); res.skipped++; continue; }
         updates.push({ row, id, payload });
@@ -92,7 +92,7 @@ async function writeProducts(client: Client, ctx: Ctx, rows: ValidatedRow[], mod
       const { data, error } = await client.from("products").insert(batch.map((b) => b.payload)).select("id,sku");
       if (error) { batch.forEach((b) => issues.error(b.row, `Falha ao gravar: ${error.message}`)); continue; }
       const ids = new Map((data ?? []).map((p) => [key(p.sku), p.id]));
-      batch.forEach((b) => { const id = ids.get(key(b.row.values.sku)); if (id) { productIds.set(b.row, id); bySku.set(key(b.row.values.sku), id); } });
+      batch.forEach((b) => { const id = ids.get(key(b.row.values["sku"])); if (id) { productIds.set(b.row, id); bySku.set(key(b.row.values["sku"]), id); } });
       res.inserted += batch.length;
     }
     await chunked(updates, 20, async (u) => {
@@ -102,24 +102,25 @@ async function writeProducts(client: Client, ctx: Ctx, rows: ValidatedRow[], mod
     });
   } else {
     for (const row of issues.valid()) {
-      const id = bySku.get(key(row.values.sku));
-      if (!id) issues.error(row, `Produto "${row.values.sku}" não cadastrado — importe produtos primeiro`);
+      const id = bySku.get(key(row.values["sku"]));
+      if (!id) issues.error(row, `Produto "${row.values["sku"]}" não cadastrado — importe produtos primeiro`);
       else productIds.set(row, id);
     }
   }
 
   // Inventory balances
-  const withQty = issues.valid().filter((r) => typeof r.values.quantity === "number" && productIds.has(r));
+  const withQty = issues.valid().filter((r) => typeof r.values["quantity"] === "number" && productIds.has(r));
   if (withQty.length) {
-    const { data: inv } = await client.from("inventory").select("id,product_id").in("product_id", withQty.map((r) => productIds.get(r)!));
+    const { data: inv } = await client.from("inventory").select("id,product_id").in("product_id", withQty.map((r) => productIds.get(r) ?? ""));
     const invByProduct = new Map((inv ?? []).map((i) => [i.product_id, i.id]));
     await chunked(withQty, 20, async (row) => {
-      const product_id = productIds.get(row)!;
-      const payload = compact({ quantity: row.values.quantity as number, avg_cost: row.values.avg_cost ?? row.values.cost_price, location: row.values.location, last_movement_at: new Date().toISOString() });
+      const product_id = productIds.get(row);
+      if (!product_id) return;
+      const payload = compact({ quantity: row.values["quantity"] as number, avg_cost: row.values["avg_cost"] ?? row.values["cost_price"], location: row.values["location"], last_movement_at: new Date().toISOString() });
       const invId = invByProduct.get(product_id);
       const { error } = invId
         ? await client.from("inventory").update(payload).eq("id", invId)
-        : await client.from("inventory").insert({ ...payload, product_id, quantity: row.values.quantity as number, store_id: ctx.storeId, created_by: ctx.userId });
+        : await client.from("inventory").insert({ ...payload, product_id, quantity: row.values["quantity"] as number, store_id: ctx.storeId, created_by: ctx.userId });
       if (error) issues.error(row, `Falha no saldo de estoque: ${error.message}`);
       else if (inventoryOnly) { if (invId) res.updated++; else res.inserted++; }
     });
@@ -138,9 +139,9 @@ async function writeParties(client: Client, ctx: Ctx, entity: "customers" | "sup
   await chunked(issues.valid(), 20, async (row) => {
     const v = row.values;
     const payload = compact(entity === "customers"
-      ? { name: v.name, doc: v.doc, email: v.email, phone: v.phone, city: v.city }
-      : { name: v.name, cnpj: v.cnpj, contact_name: v.contact_name, email: v.email, phone: v.phone, lead_time_days: v.lead_time_days, payment_terms: v.payment_terms });
-    const id = (digits(v[docCol]) && byDoc.get(digits(v[docCol]))) || byName.get(key(v.name));
+      ? { name: v["name"], doc: v["doc"], email: v["email"], phone: v["phone"], city: v["city"] }
+      : { name: v["name"], cnpj: v["cnpj"], contact_name: v["contact_name"], email: v["email"], phone: v["phone"], lead_time_days: v["lead_time_days"], payment_terms: v["payment_terms"] });
+    const id = (digits(v[docCol]) && byDoc.get(digits(v[docCol]))) || byName.get(key(v["name"]));
     if (!id) { inserts.push({ row, payload: { ...payload, store_id: ctx.storeId, created_by: ctx.userId } }); return; }
     if (mode === "insert") { issues.warn(row, "Já cadastrado — ignorado (modo somente novos)"); res.skipped++; return; }
     const { error } = await (client.from(entity) as Any).update(payload).eq("id", id);
@@ -174,18 +175,19 @@ async function writeSales(client: Client, ctx: Ctx, rows: ValidatedRow[], issues
   for (const [number, lines] of groups) {
     if (lines.some((l) => l.status === "ERRO")) { lines.forEach((l) => l.status !== "ERRO" && issues.error(l, "Venda rejeitada: outra linha do mesmo documento tem erro")); continue; }
     if (known.has(key(number))) { lines.forEach((l) => issues.error(l, `Venda ${number} já importada`)); continue; }
-    for (const l of lines) if (!products.get(key(l.values.sku))) issues.error(l, `Produto "${l.values.sku}" não cadastrado`);
+    for (const l of lines) if (!products.get(key(l.values["sku"]))) issues.error(l, `Produto "${l.values["sku"]}" não cadastrado`);
     if (lines.some((l) => l.status === "ERRO")) { lines.forEach((l) => l.status !== "ERRO" && issues.error(l, "Venda rejeitada: produto inexistente em outra linha")); continue; }
     const head = lines[0].values;
-    const customer_id = head.customer ? customers.get(key(head.customer)) : undefined;
-    const salesperson_id = head.salesperson ? sellers.get(key(head.salesperson)) : undefined;
-    if (head.customer && !customer_id) issues.warn(lines[0], `Cliente "${head.customer}" não cadastrado`);
-    if (head.salesperson && !salesperson_id) issues.warn(lines[0], `Vendedor "${head.salesperson}" não cadastrado`);
+    const customer_id = head["customer"] ? customers.get(key(head["customer"])) : undefined;
+    const salesperson_id = head["salesperson"] ? sellers.get(key(head["salesperson"])) : undefined;
+    if (head["customer"] && !customer_id) issues.warn(lines[0], `Cliente "${head["customer"]}" não cadastrado`);
+    if (head["salesperson"] && !salesperson_id) issues.warn(lines[0], `Vendedor "${head["salesperson"]}" não cadastrado`);
     const items = lines.map((l) => {
-      const p = products.get(key(l.values.sku))!;
-      const quantity = l.values.quantity as number, unit_price = l.values.unit_price as number, discount_amount = (l.values.discount as number) ?? 0;
-      const unit_cost = (l.values.unit_cost as number) ?? p.cost;
-      if (l.values.unit_cost == null && !p.cost) issues.warn(l, "Custo desconhecido — margem desta linha não é confiável");
+      const p = products.get(key(l.values["sku"]));
+      if (!p) throw new Error("Produto não encontrado");
+      const quantity = l.values["quantity"] as number, unit_price = l.values["unit_price"] as number, discount_amount = (l.values["discount"] as number) ?? 0;
+      const unit_cost = (l.values["unit_cost"] as number) ?? p.cost;
+      if (l.values["unit_cost"] == null && !p.cost) issues.warn(l, "Custo desconhecido — margem desta linha não é confiável");
       const total = round(quantity * unit_price - discount_amount);
       return { product_id: p.id, quantity, unit_price, unit_cost, discount_amount, total, margin_pct: total > 0 ? round(((total - unit_cost * quantity) / total) * 100) : null };
     });
@@ -193,8 +195,8 @@ async function writeSales(client: Client, ctx: Ctx, rows: ValidatedRow[], issues
     const total = round(items.reduce((s, i) => s + i.total, 0));
     const cost_total = round(items.reduce((s, i) => s + i.unit_cost * i.quantity, 0));
     const { data: sale, error } = await client.from("sales").insert({
-      sale_number: number, sold_at: `${head.sold_at}T12:00:00Z`, customer_id, salesperson_id,
-      payment_method: (head.payment_method as string) ?? null, status: head.status ? String(head.status).toLowerCase() : undefined,
+      sale_number: number, sold_at: `${head["sold_at"]}T12:00:00Z`, customer_id, salesperson_id,
+      payment_method: (head["payment_method"] as string) ?? null, status: head["status"] ? String(head["status"]).toLowerCase() : undefined,
       subtotal, discount_amount: round(subtotal - total), total, cost_total, gross_profit: round(total - cost_total),
       margin_pct: total > 0 ? round(((total - cost_total) / total) * 100) : null, store_id: ctx.storeId, created_by: ctx.userId,
     }).select("id").single();
@@ -216,14 +218,14 @@ async function writePurchases(client: Client, ctx: Ctx, rows: ValidatedRow[], is
     if (lines.some((l) => l.status === "ERRO")) { lines.forEach((l) => l.status !== "ERRO" && issues.error(l, "Compra rejeitada: outra linha do mesmo documento tem erro")); continue; }
     if (known.has(key(number))) { lines.forEach((l) => issues.error(l, `Compra ${number} já importada`)); continue; }
     const head = lines[0].values;
-    const supplier_id = suppliers.get(key(head.supplier));
-    if (!supplier_id) { lines.forEach((l) => issues.error(l, `Fornecedor "${head.supplier}" não cadastrado — importe fornecedores primeiro`)); continue; }
-    for (const l of lines) if (!products.get(key(l.values.sku))) issues.error(l, `Produto "${l.values.sku}" não cadastrado`);
+    const supplier_id = suppliers.get(key(head["supplier"]));
+    if (!supplier_id) { lines.forEach((l) => issues.error(l, `Fornecedor "${head["supplier"]}" não cadastrado — importe fornecedores primeiro`)); continue; }
+    for (const l of lines) if (!products.get(key(l.values["sku"]))) issues.error(l, `Produto "${l.values["sku"]}" não cadastrado`);
     if (lines.some((l) => l.status === "ERRO")) { lines.forEach((l) => l.status !== "ERRO" && issues.error(l, "Compra rejeitada: produto inexistente em outra linha")); continue; }
-    const items = lines.map((l) => ({ product_id: products.get(key(l.values.sku))!.id, quantity: l.values.quantity as number, unit_cost: l.values.unit_cost as number, total: round((l.values.quantity as number) * (l.values.unit_cost as number)) }));
+    const items = lines.map((l) => ({ product_id: products.get(key(l.values["sku"]))?.id ?? "", quantity: l.values["quantity"] as number, unit_cost: l.values["unit_cost"] as number, total: round((l.values["quantity"] as number) * (l.values["unit_cost"] as number)) }));
     const { data: purchase, error } = await client.from("purchases").insert({
-      purchase_number: number, supplier_id, ordered_at: `${head.ordered_at}T12:00:00Z`, received_at: head.received_at ? `${head.received_at}T12:00:00Z` : null,
-      status: head.received_at ? "RECEBIDA" : "PENDENTE", total: round(items.reduce((s, i) => s + i.total, 0)), store_id: ctx.storeId, created_by: ctx.userId,
+      purchase_number: number, supplier_id, ordered_at: `${head["ordered_at"]}T12:00:00Z`, received_at: head["received_at"] ? `${head["received_at"]}T12:00:00Z` : null,
+      status: head["received_at"] ? "RECEBIDA" : "PENDENTE", total: round(items.reduce((s, i) => s + i.total, 0)), store_id: ctx.storeId, created_by: ctx.userId,
     }).select("id").single();
     if (error || !purchase) { lines.forEach((l) => issues.error(l, `Falha ao gravar compra: ${error?.message}`)); continue; }
     const { error: itemErr } = await client.from("purchase_items").insert(items.map((i) => ({ ...i, purchase_id: purchase.id, created_by: ctx.userId })));
@@ -244,18 +246,18 @@ async function writeFinance(client: Client, ctx: Ctx, entity: "accounts_payable"
   const payloads: { row: ValidatedRow; payload: Any }[] = [];
   for (const row of issues.valid()) {
     const v = row.values;
-    const f = fp(v.description, v.amount, v[dateCol]);
+    const f = fp(v["description"], v["amount"], v[dateCol]);
     if (known.has(f)) { issues.warn(row, "Lançamento idêntico já existe — ignorado"); res.skipped++; continue; }
     known.add(f);
-    const partyName = entity === "accounts_receivable" ? v.customer : v.supplier;
+    const partyName = entity === "accounts_receivable" ? v["customer"] : v["supplier"];
     const partyId = partyName ? party.get(key(partyName)) : undefined;
     if (partyName && !partyId) issues.warn(row, `${entity === "accounts_receivable" ? "Cliente" : "Fornecedor"} "${partyName}" não cadastrado`);
-    const base = { description: v.description, amount: v.amount, store_id: ctx.storeId, created_by: ctx.userId };
+    const base = { description: v["description"], amount: v["amount"], store_id: ctx.storeId, created_by: ctx.userId };
     const payload = entity === "accounts_payable"
-      ? compact({ ...base, due_date: v.due_date, supplier_id: partyId, document: v.document, category: v.category, paid_amount: v.paid_amount, paid_at: v.paid_at ? `${v.paid_at}T12:00:00Z` : null, status: v.paid_at ? "PAGO" : undefined })
+      ? compact({ ...base, due_date: v["due_date"], supplier_id: partyId, document: v["document"], category: v["category"], paid_amount: v["paid_amount"], paid_at: v["paid_at"] ? `${v["paid_at"]}T12:00:00Z` : null, status: v["paid_at"] ? "PAGO" : undefined })
       : entity === "accounts_receivable"
-        ? compact({ ...base, due_date: v.due_date, customer_id: partyId, received_amount: v.received_amount, received_at: v.received_at ? `${v.received_at}T12:00:00Z` : null, status: v.received_at ? "RECEBIDO" : undefined })
-        : compact({ ...base, expense_date: v.expense_date, category: v.category, supplier_id: partyId });
+        ? compact({ ...base, due_date: v["due_date"], customer_id: partyId, received_amount: v["received_amount"], received_at: v["received_at"] ? `${v["received_at"]}T12:00:00Z` : null, status: v["received_at"] ? "RECEBIDO" : undefined })
+        : compact({ ...base, expense_date: v["expense_date"], category: v["category"], supplier_id: partyId });
     payloads.push({ row, payload });
   }
   for (let i = 0; i < payloads.length; i += 500) {
@@ -273,18 +275,18 @@ async function writeQuotes(client: Client, ctx: Ctx, mode: string, issues: RowIs
   const byNumber = new Map(((existing ?? []) as Any[]).map((q) => [key(q.quote_number), q.id as string]));
   await chunked(issues.valid(), 20, async (row) => {
     const v = row.values;
-    const customer_id = v.customer ? customers.get(key(v.customer)) : undefined;
-    const salesperson_id = v.salesperson ? sellers.get(key(v.salesperson)) : undefined;
-    if (v.customer && !customer_id) issues.warn(row, `Cliente "${v.customer}" não cadastrado`);
-    if (v.salesperson && !salesperson_id) issues.warn(row, `Vendedor "${v.salesperson}" não cadastrado`);
-    const payload = compact({ quote_number: v.quote_number as string, issued_at: `${v.issued_at}T12:00:00Z`, total: v.total as number, customer_id, salesperson_id, status: v.status ? String(v.status).toLowerCase() : undefined, valid_until: v.valid_until as string | null });
-    const id = byNumber.get(key(v.quote_number));
+    const customer_id = v["customer"] ? customers.get(key(v["customer"])) : undefined;
+    const salesperson_id = v["salesperson"] ? sellers.get(key(v["salesperson"])) : undefined;
+    if (v["customer"] && !customer_id) issues.warn(row, `Cliente "${v["customer"]}" não cadastrado`);
+    if (v["salesperson"] && !salesperson_id) issues.warn(row, `Vendedor "${v["salesperson"]}" não cadastrado`);
+    const payload = compact({ quote_number: v["quote_number"] as string, issued_at: `${v["issued_at"]}T12:00:00Z`, total: v["total"] as number, customer_id, salesperson_id, status: v["status"] ? String(v["status"]).toLowerCase() : undefined, valid_until: v["valid_until"] as string | null });
+    const id = byNumber.get(key(v["quote_number"]));
     if (id) {
       if (mode === "insert") { issues.warn(row, "Orçamento já existe — ignorado"); res.skipped++; return; }
       const { error } = await client.from("quotes").update(payload).eq("id", id);
       if (error) issues.error(row, `Falha ao atualizar: ${error.message}`); else res.updated++;
     } else {
-      const { error } = await client.from("quotes").insert({ ...payload, total: v.total as number, store_id: ctx.storeId, created_by: ctx.userId } as Any);
+      const { error } = await client.from("quotes").insert({ ...payload, total: v["total"] as number, store_id: ctx.storeId, created_by: ctx.userId } as Any);
       if (error) issues.error(row, `Falha ao gravar: ${error.message}`); else res.inserted++;
     }
   });
