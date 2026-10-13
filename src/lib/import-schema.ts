@@ -69,7 +69,7 @@ export const ENTITIES: Record<ImportEntity, EntityDef> = {
     ],
   },
   customers: {
-    key: "customers", label: "Clientes", description: "Cadastro de clientes; CPF/CNPJ evita duplicidade.", roles: ["ADMIN", "GERENTE", "FINANCEIRO"], keyField: "doc",
+    key: "customers", label: "Clientes", description: "Cadastro de clientes; CPF/CNPJ evita duplicidade.", roles: ALL_ADMIN, keyField: "doc",
     fields: [
       f("name", "Nome", "text", ["nome", "cliente", "razao social", "nome cliente"], { required: true }),
       f("doc", "CPF/CNPJ", "text", ["cpf", "cnpj", "cpf cnpj", "documento", "doc"]),
@@ -79,7 +79,7 @@ export const ENTITIES: Record<ImportEntity, EntityDef> = {
     ],
   },
   suppliers: {
-    key: "suppliers", label: "Fornecedores", description: "Cadastro com prazo de entrega e condição de pagamento.", roles: ["ADMIN", "GERENTE", "FINANCEIRO", "ESTOQUE"], keyField: "cnpj",
+    key: "suppliers", label: "Fornecedores", description: "Cadastro com prazo de entrega e condição de pagamento.", roles: STOCK, keyField: "cnpj",
     fields: [
       f("name", "Nome", "text", ["nome", "fornecedor", "razao social"], { required: true }),
       f("cnpj", "CNPJ", "text", ["cnpj", "documento"]),
@@ -107,7 +107,7 @@ export const ENTITIES: Record<ImportEntity, EntityDef> = {
     ],
   },
   purchases: {
-    key: "purchases", label: "Compras (itens)", description: "Uma linha por item; linhas com o mesmo número formam um pedido.", roles: FINANCE, keyField: "purchase_number", grouped: true,
+    key: "purchases", label: "Compras (itens)", description: "Uma linha por item; linhas com o mesmo número formam um pedido.", roles: STOCK, keyField: "purchase_number", grouped: true,
     fields: [
       f("purchase_number", "Nº da compra", "text", ["numero", "pedido", "nota", "nf", "numero compra", "documento"], { required: true }),
       f("ordered_at", "Data", "date", ["data", "data pedido", "emissao", "data compra"], { required: true }),
@@ -323,17 +323,19 @@ export function validateRecords(entity: ImportEntity, records: RawRecord[], firs
       if (price != null && disc > price * qty) errors.push("Desconto maior que o valor do item");
     }
     if (entity === "accounts_payable") {
-      if (num("paid_amount") != null && !values.paid_at) warnings.push("Valor pago sem data de pagamento");
+      if (num("paid_amount") != null && !values["paid_at"]) warnings.push("Valor pago sem data de pagamento");
       if ((num("paid_amount") ?? 0) > (num("amount") ?? Infinity)) warnings.push("Valor pago maior que o título");
     }
     if (entity === "accounts_receivable") {
-      if (num("received_amount") != null && !values.received_at) warnings.push("Valor recebido sem data");
+      if (num("received_amount") != null && !values["received_at"]) warnings.push("Valor recebido sem data");
       if ((num("received_amount") ?? 0) > (num("amount") ?? Infinity)) warnings.push("Valor recebido maior que o título");
     }
 
     // Duplicate natural key inside the file (non-grouped entities)
     if (!def.grouped) {
-      const key = values[def.keyField];
+      const key = ["expenses", "accounts_receivable", "accounts_payable"].includes(entity)
+        ? `${values["description"]}|${values["amount"]}|${values["expense_date"] ?? values["due_date"]}`
+        : (values[def.keyField] ?? (["customers", "suppliers"].includes(entity) ? values["name"] : null));
       if (key != null && key !== "") {
         const k = normalizeHeader(String(key));
         const prev = seen.get(k);
@@ -358,7 +360,8 @@ export function summarize(rows: ValidatedRow[]) {
 
 export function toCsv(headers: string[], rows: (string | number | null | undefined)[][]) {
   const esc = (v: unknown) => {
-    const s = v == null ? "" : String(v);
+    let s = v == null ? "" : String(v);
+    if (/^[=+@]/.test(s) || /^-[^0-9]/.test(s)) s = "\'" + s;
     return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [headers, ...rows].map((r) => r.map(esc).join(";")).join("\n");

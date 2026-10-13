@@ -18,25 +18,25 @@ describe("leitura de valores", () => {
 describe("mapeamento de colunas", () => {
   it("reconhece Cód. e Descrição como código e produto", () => {
     const m = suggestMapping("products", ["Cód.", "Descrição", "Preço Venda", "Custo"]);
-    expect(m.sku).toBe("Cód.");
-    expect(m.name).toBe("Descrição");
-    expect(m.sale_price).toBe("Preço Venda");
-    expect(m.cost_price).toBe("Custo");
+    expect(m["sku"]).toBe("Cód.");
+    expect(m["name"]).toBe("Descrição");
+    expect(m["sale_price"]).toBe("Preço Venda");
+    expect(m["cost_price"]).toBe("Custo");
   });
 });
 
 describe("validação de linhas", () => {
   it("rejeita linha sem código obrigatório", () => {
     const [row] = validateRecords("products", [{ name: "Tinta" }]);
-    expect(row.status).toBe("ERRO");
+    expect(row?.status).toBe("ERRO");
   });
   it("avisa preço de venda abaixo do custo", () => {
     const [row] = validateRecords("products", [{ sku: "1", name: "Tinta", cost_price: "100", sale_price: "90" }]);
-    expect(row.status).toBe("AVISO");
+    expect(row?.status).toBe("AVISO");
   });
   it("rejeita código duplicado no mesmo arquivo", () => {
     const rows = validateRecords("products", [{ sku: "A1", name: "x" }, { sku: "a1", name: "y" }]);
-    expect(rows[1].status).toBe("ERRO");
+    expect(rows[1]?.status).toBe("ERRO");
   });
 });
 
