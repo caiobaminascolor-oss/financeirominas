@@ -23,6 +23,7 @@ import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedEstoqueRouteImport } from './routes/_authenticated/estoque'
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
 import { Route as AuthenticatedFornecedoresRouteImport } from './routes/_authenticated/fornecedores'
+import { Route as AuthenticatedImportacoesRouteImport } from './routes/_authenticated/importacoes'
 import { Route as AuthenticatedMarketingRouteImport } from './routes/_authenticated/marketing'
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedOrcamentosRouteImport } from './routes/_authenticated/orcamentos'
@@ -102,6 +103,12 @@ const AuthenticatedFornecedoresRoute =
     path: '/fornecedores',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedImportacoesRoute =
+  AuthenticatedImportacoesRouteImport.update({
+    id: '/importacoes',
+    path: '/importacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMarketingRoute = AuthenticatedMarketingRouteImport.update({
   id: '/marketing',
   path: '/marketing',
@@ -135,9 +142,9 @@ const AuthenticatedVendasRoute = AuthenticatedVendasRouteImport.update({
 } as any)
 const AuthenticatedImportacoesIndexRoute =
   AuthenticatedImportacoesIndexRouteImport.update({
-    id: '/importacoes/',
-    path: '/importacoes/',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedImportacoesRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -154,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/estoque': typeof AuthenticatedEstoqueRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/fornecedores': typeof AuthenticatedFornecedoresRoute
+  '/importacoes': typeof AuthenticatedImportacoesRouteWithChildren
   '/marketing': typeof AuthenticatedMarketingRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/orcamentos': typeof AuthenticatedOrcamentosRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/_authenticated/estoque': typeof AuthenticatedEstoqueRoute
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
   '/_authenticated/fornecedores': typeof AuthenticatedFornecedoresRoute
+  '/_authenticated/importacoes': typeof AuthenticatedImportacoesRouteWithChildren
   '/_authenticated/marketing': typeof AuthenticatedMarketingRoute
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/orcamentos': typeof AuthenticatedOrcamentosRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | '/estoque'
     | '/financeiro'
     | '/fornecedores'
+    | '/importacoes'
     | '/marketing'
     | '/metas'
     | '/orcamentos'
@@ -269,6 +279,7 @@ export interface FileRouteTypes {
     | '/_authenticated/estoque'
     | '/_authenticated/financeiro'
     | '/_authenticated/fornecedores'
+    | '/_authenticated/importacoes'
     | '/_authenticated/marketing'
     | '/_authenticated/metas'
     | '/_authenticated/orcamentos'
@@ -384,6 +395,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFornecedoresRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/importacoes': {
+      id: '/_authenticated/importacoes'
+      path: '/importacoes'
+      fullPath: '/importacoes'
+      preLoaderRoute: typeof AuthenticatedImportacoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/marketing': {
       id: '/_authenticated/marketing'
       path: '/marketing'
@@ -428,13 +446,27 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/importacoes/': {
       id: '/_authenticated/importacoes/'
-      path: '/importacoes'
+      path: '/'
       fullPath: '/importacoes/'
       preLoaderRoute: typeof AuthenticatedImportacoesIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedImportacoesRoute
     }
   }
 }
+
+interface AuthenticatedImportacoesRouteChildren {
+  AuthenticatedImportacoesIndexRoute: typeof AuthenticatedImportacoesIndexRoute
+}
+
+const AuthenticatedImportacoesRouteChildren: AuthenticatedImportacoesRouteChildren =
+  {
+    AuthenticatedImportacoesIndexRoute: AuthenticatedImportacoesIndexRoute,
+  }
+
+const AuthenticatedImportacoesRouteWithChildren =
+  AuthenticatedImportacoesRoute._addFileChildren(
+    AuthenticatedImportacoesRouteChildren,
+  )
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAgenteRoute: typeof AuthenticatedAgenteRoute
@@ -448,13 +480,13 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedEstoqueRoute: typeof AuthenticatedEstoqueRoute
   AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
   AuthenticatedFornecedoresRoute: typeof AuthenticatedFornecedoresRoute
+  AuthenticatedImportacoesRoute: typeof AuthenticatedImportacoesRouteWithChildren
   AuthenticatedMarketingRoute: typeof AuthenticatedMarketingRoute
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedOrcamentosRoute: typeof AuthenticatedOrcamentosRoute
   AuthenticatedProdutosParadosRoute: typeof AuthenticatedProdutosParadosRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedVendasRoute: typeof AuthenticatedVendasRoute
-  AuthenticatedImportacoesIndexRoute: typeof AuthenticatedImportacoesIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -469,13 +501,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedEstoqueRoute: AuthenticatedEstoqueRoute,
   AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
   AuthenticatedFornecedoresRoute: AuthenticatedFornecedoresRoute,
+  AuthenticatedImportacoesRoute: AuthenticatedImportacoesRouteWithChildren,
   AuthenticatedMarketingRoute: AuthenticatedMarketingRoute,
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedOrcamentosRoute: AuthenticatedOrcamentosRoute,
   AuthenticatedProdutosParadosRoute: AuthenticatedProdutosParadosRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedVendasRoute: AuthenticatedVendasRoute,
-  AuthenticatedImportacoesIndexRoute: AuthenticatedImportacoesIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
